@@ -1,0 +1,11 @@
+Originaly, in the HooKey sample, I thought I'd need a Visual C++ dll to hook the HCBT_ACTIVATE notification of a CBT hook to track the active application. However, Alex Ionescu (thanks Alex) pointed out a (prior to the MS settlement) undocumented api call that would get the job done. Nevertheless, I thought it might be instructive for those who care, to see how to do a system-wide global hook of the kind that you just can't achieve (yet!) in Visual Basic.
+
+Health warning: Be careful, be *very* careful. When this kind of hook is set, Windows forces a separate instance of the dll into the address space of every single process with a UI thread. So...
+
+a) It better be fast or you may noticibly impact system performance.
+b) It better be small else again, you'll be taking a hit.
+c) It better work... an ugly failure could easily crash everything.
+
+Good luck and enjoy.
+
+Paul_Caton@hotmail.com
