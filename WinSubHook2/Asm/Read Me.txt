@@ -1,0 +1,68 @@
+More about my use of assembler in VB...
+
+I use the nasm assembler, which is freely available all over the net at no charge.
+
+The assembler source can be viewed and edited with notepad if you don't have an asm specific editor.
+
+One feature of the nasm assembler that I like is the ability to write .bin files. A bin file is just the raw machine code, no header, no structure, just the codes.. man. 
+
+I’ve included the batch file that I use to produce the .bin files (nasm.bat). To use it you’ll likely need to edit the path in the first line to the location of your copy of nasmw.exe.
+
+Usage: from the command prompt...
+nasm Subclass <Enter>
+
+Any errors will be displayed on the screen and in addition, preserved in Err.txt
+
+To make it easy to extract the machine code bytes for use in VB, I’ve included the utility I use for this purpose. It's located in Utility\McXtract
+
+No, I can’t teach you to code in assembler, find references/tutorials etc, stare hard at other people’s code; hell, mine even. If you’re the determined type, all will become clear-ish eventually :) To which end I’ve commented the source fairly heavily. If you can improve on my efforts (smaller, faster or better) then kindly let me know. I will however, quickly pass over some of my less obvious stunts.
+
+Patch Markers?
+There are other ways of achieving what I'm about to outline, see the elegant solution used in Vlad's HookMenu submission, but mine, whilst being perhaps a little uglier, has speed and size benefits. Problem: we don't know the memory addresses of dll located functions we need to call until runtime. In fact, many things we need to know aren't known until runtime. Solution: we patch the code at runtime. To this end you'll see lines like this in my source:
+
+%define _patch1_    01BCCAABh           ;Relative address of the EbMode function
+
+First, %define just means replace all subsequent occurrences of _patch1_ with the value 01BCCAABh. And no, 01BCCAAB isn't the relative address of the EbMode function; rather it's a easily spot-able placeholder that we'll replace with the actual relative address at runtime.
+
+To understand why the odd sequence 01BCCAABh, it might help to understand that Intel uses a strange (imo) byte ordering convention known as little endian. If you were to look at this value in a .bin file you'd see ABCABC01 - Is that more obvious? Recall that I need to patch parts of the code at runtime... the fidly bit is knowing exactly where and what. The McXtract utility that I mentioned earlier is coded to scan the byte stream for ABCABC?? sequences - upon finding such, the utility will patch the stream with each of the key sequence substituted by xxxxx??x - it also produces a related VB constant stating the offset.
+
+Const PATCH_01 As Long = 17
+Const CODE_STR As String = "5589E583C4F831D28955FC8955F8EB0EE8xxxxx01x83F8...
+
+If you care to count, you'll find that xxxxx01x is 34 characters in. This is before the code string is converted from hex nibbles to bytes; then it will exist at offset 17 in the machine code buffer.
+
+In the WinSubHook2 thunks, I use two private routines for the patching.
+
+One for patching values, PatchVal, likely for when I'm mov-ing a runtime value into a cpu register.
+
+The other is for program-loader-esque patching of function call addresses, PatchRel. The difficulty is this... X86 function calls are to an address relative to the current instruction counter/pointer, rather than an absolute address. It's a case of adding a value (positive or negative) to the current instruction counter rather than setting it to a particular value. Normally, as stated, the program loader takes care of such hoary fixup details when it loads a program into memory, but we're preparing and executing naughty code, code that neither Windows or VB knows is code, shhh. PatchRel takes care of the computation.
+
+By way of related explanation re the above
+
+db      0E8h                        ;Far call
+dd      _patch1_                    ;Call EbMode, patched at runtime
+
+What's db etc and why? DB means declare a byte, and in this case with the value of 0E8h. Yes, with X86 you can mix data in with the code. 0E8 also happens to be the op-code value for a 32 bit (far) function call. Ordinarily in assembler you'd be providing a target label to call, either directly in the source or by arranging for the program loader to resolve the call at load time... we don't know the memory address of EbMode until we're running, and the program loader can't help because it doesn't know about our dirty little secret.
+
+dd, you may have guessed stands for declare double word, or something. Whatever, a 32 bit Long in VB speak.
+
+To complete this explanation, in the thunk class we obtain the memory address of EbMode using two api calls in a private routine named AddrFunc. Having obtained the function's address, all that remains is to patch the op-code buffer using PatchRel(PATCH_01, AddrFunc("vba6.dll", "EbMode")) [actual source is different to allow for vb5] - When the cpu reaches our 5 byte sequence (0E8h followed by a 4 byte, 32 bit relative address offset) it executes a far call to EbMode. BTW EbMode, what is it? Down on your knees and grovel before the mighty Vlad... EbMode is a *rather* handy little function located in vba6.dll (or vba5.dll if you're running VB5) that will tell us whether the VB IDE is on a breakpoint, stopped or running. It helps BIG-TIME to make these thunks IDE safe.
+
+Most everything else should be understandable with careful study and an opcode reference. If not, you could always ask.. you *might* get an answer :-) In addition to nasm, you might also consider downloading the free MASM package, not that I like MASM, but it does include a number of basic but useful help files.
+
+I've gone the extra yard with the comments in the Subclass.asm source. So if you were to pick just one to examine...
+
+Okay class, exercises: :-)
+1. You'll know you've made progress when you can see why ByVal is a teensy-weensy bit faster than ByRef, as well as being safer (unless you really want to alter its value back in the calling routine).
+
+2. Speed obsessed maniacs could...
+a) Inline the internal calls I make (akin to gosubs rather than calls) - Memory is cheap but this would increase the amount of patching required.
+
+b) Implemented interfaces are roughly 10x faster than events (good enough for me and most "sane" folks), however, it still has to negotiate a deal of pre-entry code. As an alternative, at the cost of adding a module to the deal, instead of passing "Me" to cSubclass.Subclass [which allows the thunk to callback via Me's vTable to the owners implemented interface] pass the AddressOf a module function and call it directly from the machine code thunk.
+
+c) Download (included in the MASM package) Agner Fog's Pentium Optimization help file. By all means take in the general advice... but... well, you'll see if you read it. Strictly for compiler writers, propeller heads and others in serious need of a life.
+
+HTH
+
+--
+Paul_Caton@hotmail.com

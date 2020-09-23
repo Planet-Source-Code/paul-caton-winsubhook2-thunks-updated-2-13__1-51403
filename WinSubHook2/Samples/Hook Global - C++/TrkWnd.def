@@ -1,0 +1,4 @@
+LIBRARY        TrkWnd
+DESCRIPTION    'CBT HCBT_ACTIVATE system-wide hook'
+EXPORTS		   HookStart		@2
+			   HookStop			@3
